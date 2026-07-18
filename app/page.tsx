@@ -1,5 +1,5 @@
-import { AgentFenceDashboard } from "../components/agentfence-dashboard";
+import { MissionDashboard } from "../components/mission-dashboard";
 
 export default function Page() {
-  return <AgentFenceDashboard />;
+  return <MissionDashboard />;
 }
