@@ -20,6 +20,13 @@ describe("demo support agent", () => {
     expect(protectedRun.evidence.map(item => item.severity)).toEqual(["safe", "safe"]);
   });
 
+  it("covers three distinct synthetic attack paths", () => {
+    const attacks = ["direct-injection", "ticket-note", "bulk-export"] as const;
+    const runs = attacks.map(createVulnerableRun);
+    expect(runs.map(run => run.attackKind)).toEqual(attacks);
+    expect(runs.every(run => run.outcome === "leaked" && run.toolCall.status === "executed")).toBe(true);
+  });
+
   it("keeps the demo working without an OpenAI key", async () => {
     const previousKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

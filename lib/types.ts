@@ -1,5 +1,6 @@
 export type RunStage = "attack" | "trace" | "fix" | "verify";
 export type Outcome = "leaked" | "blocked";
+export type AttackKind = "direct-injection" | "ticket-note" | "bulk-export";
 
 export type ToolCall = {
   name: "customer_lookup";
@@ -12,6 +13,8 @@ export type Evidence = { title: string; description: string; severity: "critical
 
 export type SecurityRun = {
   runId: string;
+  attackKind: AttackKind;
+  attackLabel: string;
   stage: RunStage;
   prompt: string;
   toolCall: ToolCall;
