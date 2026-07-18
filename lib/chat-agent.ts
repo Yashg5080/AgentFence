@@ -8,19 +8,22 @@ export type ChatToolCall = {
 };
 
 export type ChatReply = { reply: string; source: "huggingface" | "local"; warning?: string; toolCall?: ChatToolCall };
+export type ChatRole = "user" | "assistant";
+export type ChatHistoryItem = { role: ChatRole; content: string };
 
-const localReply = (message: string) => {
+export const localSupportReply = (message: string) => {
   const normalized = message.toLowerCase();
   if (normalized.includes("order") || normalized.includes("ticket")) return "I can help check a specific support ticket. Please share its verified ticket ID, not customer data.";
   if (normalized.includes("email") || normalized.includes("customer")) return "I can help with a specific customer request after a verified ticket ID is provided. I cannot retrieve bulk customer data.";
   return "I can help with account access, order status, and verified support tickets. What would you like to check?";
 };
 
-function customerLookupIntent(message: string) {
+export function customerLookupIntent(message: string) {
   return /(customer_lookup|customer\s+(email|record|data)|email\s+(list|address|export)|all\s+customers|every\s+customer)/i.test(message);
 }
 
-function executeCustomerLookup(message: string, protectedMode: boolean): ChatReply {
+export function runCustomerLookup(message: string, protectedMode: boolean): ChatReply | undefined {
+  if (!customerLookupIntent(message)) return undefined;
   const bulkRequest = /(all|every|bulk|list|export)/i.test(message) && /(email|customer)/i.test(message);
   const verifiedTicket = /\b(?:ticket[-\s]?)?[A-Z]{2,8}-\d{3,}\b/i.test(message);
   if (protectedMode && (bulkRequest || !verifiedTicket)) {
@@ -39,9 +42,10 @@ function executeCustomerLookup(message: string, protectedMode: boolean): ChatRep
 }
 
 export async function replyToSupportMessage(message: string, protectedMode = false): Promise<ChatReply> {
-  if (customerLookupIntent(message)) return executeCustomerLookup(message, protectedMode);
+  const toolReply = runCustomerLookup(message, protectedMode);
+  if (toolReply) return toolReply;
   const token = process.env.HF_TOKEN;
-  if (!token) return { reply: localReply(message), source: "local", warning: "Using the built-in chat response. Add HF_TOKEN for live Hugging Face replies." };
+  if (!token) return { reply: localSupportReply(message), source: "local", warning: "Using the built-in chat response. Add HF_TOKEN for live Hugging Face replies." };
   try {
     const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
       method: "POST",
@@ -56,12 +60,22 @@ export async function replyToSupportMessage(message: string, protectedMode = fal
         temperature: 0.4,
       }),
     });
-    if (!response.ok) return { reply: localReply(message), source: "local", warning: `Hugging Face is unavailable (${response.status}); using the built-in chat response.` };
+    if (!response.ok) return { reply: localSupportReply(message), source: "local", warning: `Hugging Face is unavailable (${response.status}); using the built-in chat response.` };
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const reply = payload.choices?.[0]?.message?.content?.trim();
-    if (!reply) return { reply: localReply(message), source: "local", warning: "Hugging Face returned no chat content; using the built-in chat response." };
+    if (!reply) return { reply: localSupportReply(message), source: "local", warning: "Hugging Face returned no chat content; using the built-in chat response." };
     return { reply, source: "huggingface" };
   } catch {
-    return { reply: localReply(message), source: "local", warning: "Hugging Face could not be reached; using the built-in chat response." };
+    return { reply: localSupportReply(message), source: "local", warning: "Hugging Face could not be reached; using the built-in chat response." };
   }
+}
+
+export function cleanHistory(value: unknown): ChatHistoryItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-8).flatMap((item): ChatHistoryItem[] => {
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as { role?: unknown; content?: unknown };
+    if ((candidate.role !== "user" && candidate.role !== "assistant") || typeof candidate.content !== "string") return [];
+    return [{ role: candidate.role, content: candidate.content.slice(0, 1200) }];
+  });
 }
