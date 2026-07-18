@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProtectedRun, createVulnerableRun, localGuardrail } from "../lib/demo-agent";
 import { generateGuardrail } from "../lib/fix-generator";
+import { replyToSupportMessage } from "../lib/chat-agent";
 
 describe("demo support agent", () => {
   it("executes customer lookup in the intentionally vulnerable mode", () => {
@@ -27,5 +28,15 @@ describe("demo support agent", () => {
     else process.env.OPENAI_API_KEY = previousKey;
     expect(result.guardrail.source).toBe("local-demo");
     expect(result.warning).toContain("local demo guardrail");
+  });
+
+  it("keeps normal support chat working without a Hugging Face token", async () => {
+    const previousToken = process.env.HF_TOKEN;
+    delete process.env.HF_TOKEN;
+    const result = await replyToSupportMessage("Where is my order?");
+    if (previousToken === undefined) delete process.env.HF_TOKEN;
+    else process.env.HF_TOKEN = previousToken;
+    expect(result.source).toBe("local");
+    expect(result.reply).toContain("ticket");
   });
 });
