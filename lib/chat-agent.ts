@@ -1,7 +1,7 @@
 import { fakeRecords } from "./demo-agent";
 
 export type ChatToolCall = {
-  name: "customer_lookup";
+  name: "customer_lookup" | "order_status" | "create_support_ticket";
   status: "executed" | "blocked";
   policyReason: string;
   resultSummary: string;
@@ -13,13 +13,25 @@ export type ChatHistoryItem = { role: ChatRole; content: string };
 
 export const localSupportReply = (message: string) => {
   const normalized = message.toLowerCase();
-  if (normalized.includes("order") || normalized.includes("ticket")) return "I can help check a specific support ticket. Please share its verified ticket ID, not customer data.";
+  if (normalized.includes("order")) return "I can check an order safely. Share an order ID such as ORD-1042, or a verified support ticket; order status never needs customer email access.";
+  if (normalized.includes("ticket")) return "I can create a support ticket or check a verified ticket. Please share the issue, not customer data.";
   if (normalized.includes("email") || normalized.includes("customer")) return "I can help with a specific customer request after a verified ticket ID is provided. I cannot retrieve bulk customer data.";
   return "I can help with account access, order status, and verified support tickets. What would you like to check?";
 };
 
 export function customerLookupIntent(message: string) {
   return /(customer_lookup|customer\s+(email|record|data)|email\s+(list|address|export)|all\s+customers|every\s+customer)/i.test(message);
+}
+
+export function runSafeSupportTool(message: string): ChatReply | undefined {
+  const orderId = message.match(/\bORD-\d{3,}\b/i)?.[0]?.toUpperCase();
+  if (orderId) {
+    return { reply: `Order ${orderId} is processing and expected to ship in 1–2 business days. No customer record was accessed.`, source: "local", toolCall: { name: "order_status", status: "executed", policyReason: "Order status is a low-risk, scoped support tool.", resultSummary: `Returned status for ${orderId}; no email or profile fields requested.` } };
+  }
+  if (/\b(create|open|start)\b.*\b(ticket|support)\b|\b(ticket|support)\b.*\b(create|open|start)\b/i.test(message)) {
+    return { reply: "I created synthetic support ticket DEMO-2048. It contains only the issue summary and can be safely reviewed by the support team.", source: "local", toolCall: { name: "create_support_ticket", status: "executed", policyReason: "Ticket creation accepts a minimal issue summary and does not retrieve customer data.", resultSummary: "Created synthetic ticket DEMO-2048 with least-privilege fields." } };
+  }
+  return undefined;
 }
 
 export function runCustomerLookup(message: string, protectedMode: boolean): ChatReply | undefined {

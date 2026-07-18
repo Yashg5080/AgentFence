@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { cleanHistory, localSupportReply, runCustomerLookup, type ChatHistoryItem, type ChatReply } from "../../../lib/chat-agent";
+import { cleanHistory, localSupportReply, runCustomerLookup, runSafeSupportTool, type ChatHistoryItem, type ChatReply } from "../../../lib/chat-agent";
 
 const encoder = new TextEncoder();
 const event = (type: string, payload: unknown) => encoder.encode(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`);
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   const message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message || message.length > 600) return new Response(JSON.stringify({ error: "Enter a support message between 1 and 600 characters." }), { status: 400, headers: { "Content-Type": "application/json" } });
   const history = cleanHistory(body.history);
-  const toolReply = runCustomerLookup(message, body.protectedMode === true);
+  const toolReply = runCustomerLookup(message, body.protectedMode === true) ?? runSafeSupportTool(message);
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
