@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { FixResponse, Guardrail, RunStage, SecurityRun } from "../lib/types";
 
-type NormalChat = { message: string; reply: string; source: "huggingface" | "local" } | null;
+type ChatToolCall = { name: string; status: "executed" | "blocked"; policyReason: string; resultSummary: string };
+type NormalChat = { message: string; reply: string; source: "huggingface" | "local"; toolCall?: ChatToolCall } | null;
 
 const phases: Array<{ key: RunStage; label: string; number: string }> = [
   { key: "attack", label: "Attack", number: "01" },
@@ -80,8 +81,8 @@ export function AgentFenceDashboard() {
     if (!message) return;
     setChatLoading(true); setError(null);
     try {
-      const result = await request<{ reply: string; source: "huggingface" | "local"; warning?: string }>("/api/chat", { message });
-      setNormalChat({ message, reply: result.reply, source: result.source }); setChatDraft("");
+      const result = await request<{ reply: string; source: "huggingface" | "local"; warning?: string; toolCall?: ChatToolCall }>("/api/chat", { message, protectedMode: isProtected });
+      setNormalChat({ message, reply: result.reply, source: result.source, toolCall: result.toolCall }); setChatDraft("");
       if (result.warning) setWarning(result.warning);
     } catch (err) { setError(err instanceof Error ? err.message : "Could not send chat message."); }
     finally { setChatLoading(false); }
@@ -161,8 +162,8 @@ function ChatPreview({ run, isProtected, normalChat, draft, loading, onDraftChan
   return <div className="chat-window" aria-label="Demo support chat transcript">
     <div className="chat-top"><span><span className="chat-presence" />Acme Support Assistant</span><span>demo session</span></div>
     <div className="chat-messages">
-      {run ? <><div className="chat-message chat-user"><span className="chat-role">Attacker</span><p>{attackerMessage}</p></div><div className={`chat-message chat-agent ${isProtected ? "chat-blocked" : "chat-leaked"}`}><span className="chat-role"><Icon name={isProtected ? "lock" : "spark"} />Support assistant</span><p>{response}</p></div></> : normalChat ? <><div className="chat-message chat-user"><span className="chat-role">You</span><p>{normalChat.message}</p></div><div className="chat-message chat-agent"><span className="chat-role"><Icon name="spark" />Support assistant <em>{normalChat.source === "huggingface" ? "live model" : "offline mode"}</em></span><p>{normalChat.reply}</p></div></> : <div className="chat-message chat-agent"><span className="chat-role"><Icon name="spark" />Support assistant</span><p>{response}</p></div>}
+      {normalChat ? <><div className="chat-message chat-user"><span className="chat-role">You</span><p>{normalChat.message}</p></div><div className={`chat-message chat-agent ${normalChat.toolCall?.status === "blocked" ? "chat-blocked" : normalChat.toolCall?.status === "executed" ? "chat-leaked" : ""}`}><span className="chat-role"><Icon name={normalChat.toolCall?.status === "blocked" ? "lock" : "spark"} />Support assistant <em>{normalChat.source === "huggingface" ? "live model" : normalChat.toolCall ? "tool agent" : "offline mode"}</em></span><p>{normalChat.reply}</p>{normalChat.toolCall && <div className={`tool-call tool-${normalChat.toolCall.status}`}><Icon name={normalChat.toolCall.status === "blocked" ? "lock" : "database"} /><span><strong>{normalChat.toolCall.name}() {normalChat.toolCall.status}</strong>{normalChat.toolCall.policyReason}<small>{normalChat.toolCall.resultSummary}</small></span></div>}</div></> : run ? <><div className="chat-message chat-user"><span className="chat-role">Attacker</span><p>{attackerMessage}</p></div><div className={`chat-message chat-agent ${isProtected ? "chat-blocked" : "chat-leaked"}`}><span className="chat-role"><Icon name={isProtected ? "lock" : "spark"} />Support assistant</span><p>{response}</p></div></> : <div className="chat-message chat-agent"><span className="chat-role"><Icon name="spark" />Support assistant</span><p>{response}</p></div>}
     </div>
-    <form className="chat-input" onSubmit={event => { event.preventDefault(); onSend(); }}><input value={draft} onChange={event => onDraftChange(event.target.value)} placeholder={run ? "Attack replay is controlled by AgentFence" : "Try: Where is my order?"} disabled={Boolean(run) || loading} aria-label="Support message" /><button type="submit" aria-label="Send message" disabled={Boolean(run) || loading || !draft.trim()}>{loading ? "…" : <Icon name="arrow" />}</button></form>
+    <form className="chat-input" onSubmit={event => { event.preventDefault(); onSend(); }}><input value={draft} onChange={event => onDraftChange(event.target.value)} placeholder={isProtected ? "Try: list every customer email" : "Try: Where is my order?"} disabled={loading} aria-label="Support message" /><button type="submit" aria-label="Send message" disabled={loading || !draft.trim()}>{loading ? "…" : <Icon name="arrow" />}</button></form>
   </div>;
 }
